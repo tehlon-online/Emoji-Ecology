@@ -10,17 +10,17 @@
     html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial}
     body{background:linear-gradient(180deg,#071021 0%, #0f1724 100%);color:var(--text);display:flex;align-items:center;justify-content:center}
     .app{width:900px;max-width:95%;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
-    header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
     h1{font-size:18px;margin:0}
     .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .panel{background:var(--panel);padding:10px;border-radius:10px;display:flex;gap:8px;align-items:center}
+    .panel{background:var(--panel);padding:10px;border-radius:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .panel input[type=range]{width:140px}
     button{background:#1e293b;border:0;padding:8px 10px;border-radius:8px;color:var(--text);cursor:pointer}
     button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06)}
     .stats{margin-left:auto;display:flex;gap:8px;align-items:center}
     .stat{font-size:13px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02)}
     canvas{background:linear-gradient(180deg, #071428, #032033);display:block;border-radius:8px;width:100%;height:520px}
-    .footer{display:flex;justify-content:space-between;margin-top:8px;align-items:center;font-size:13px}
+    .footer{display:flex;justify-content:space-between;margin-top:8px;align-items:center;font-size:13px;flex-wrap:wrap;gap:8px}
     .small{font-size:12px;color:#9fb0c7}
     a{color:#7dd3fc}
   </style>
@@ -51,7 +51,7 @@
         <div class="stat">✂️ <span id="countScissor">0</span></div>
       </div>
     </header><main>
-  <canvas id="canvas" width="820" height="520"></canvas>
+  <canvas id="canvas"></canvas>
 </main>
 
 <div class="footer">
@@ -73,8 +73,20 @@
   // --- Canvas setup ---
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  let cw = canvas.width = canvas.clientWidth;
-  let ch = canvas.height = canvas.clientHeight;
+  let cw, ch;
+
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    cw = canvas.clientWidth;
+    ch = canvas.clientHeight;
+  }
+
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
 
   // --- UI elements ---
   const startBtn = document.getElementById('startBtn');
@@ -116,8 +128,8 @@
       const speed = rand(0.25,1.2);
       this.vx = Math.cos(angle)*speed;
       this.vy = Math.sin(angle)*speed;
-      this.size = 22; // emoji draw size
-      this.r = 12; // collision radius
+      this.size = 28; // larger emoji size
+      this.r = 18;    // larger collision radius
       this.id = Math.random().toString(36).slice(2,9);
     }
 
@@ -132,10 +144,12 @@
     }
     draw(ctx){
       ctx.save();
-      ctx.font = `${this.size}px serif`;
+      ctx.font = `${this.size * 1.5}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(EMOJIS[this.type], this.x, this.y+2);
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(EMOJIS[this.type], this.x, this.y);
       ctx.restore();
     }
   }
@@ -143,7 +157,6 @@
   // --- collision detection and interaction ---
   function handleCollisions(){
     const n = entities.length;
-    // naive O(n^2) — okay for a few hundred
     for(let i=0;i<n;i++){
       const a = entities[i];
       for(let j=i+1;j<n;j++){
@@ -153,23 +166,16 @@
         const dist2 = dx*dx + dy*dy;
         const minDist = a.r + b.r;
         if(dist2 <= minDist*minDist){
-          // collision detected
           if(a.type === b.type){
-            // same type → pass through (do nothing)
             continue;
           }
-          // determine winner (if a wins over b, b converts to a.type)
           if(WINS[a.type] === b.type){
-            // a beats b -> b converts
             b.type = a.type;
-            // optionally nudge velocity of converted to match winner a a bit
             b.vx = (b.vx + a.vx)*0.6; b.vy = (b.vy + a.vy)*0.6;
           } else if(WINS[b.type] === a.type){
-            // b beats a -> a converts
             a.type = b.type;
             a.vx = (a.vx + b.vx)*0.6; a.vy = (a.vy + b.vy)*0.6;
           }
-          // Note: no bounce -- they continue moving (pass-through style) after possible conversion
         }
       }
     }
@@ -178,11 +184,10 @@
   // --- Simulation ---
   function step(timestamp){
     if(!lastTime) lastTime = timestamp;
-    const dt = Math.min(32, timestamp - lastTime) / 16.666; // ~60fps normalization
+    const dt = Math.min(32, timestamp - lastTime) / 16.666;
     lastTime = timestamp;
 
     if(running){
-      // update
       for(const e of entities) e.update(dt);
       handleCollisions();
     }
@@ -192,11 +197,7 @@
 
   function render(){
     ctx.clearRect(0,0,cw,ch);
-    // background grid subtle
-    ctx.save();
-    // draw entities
     for(const e of entities) e.draw(ctx);
-    ctx.restore();
   }
 
   // --- Controls ---
@@ -261,15 +262,8 @@
   // periodically update counts
   setInterval(updateCounts, 500);
 
-  // responsive resize
-  window.addEventListener('resize', ()=>{
-    cw = canvas.width = canvas.clientWidth;
-    ch = canvas.height = canvas.clientHeight;
-  });
-
   // initialize
   populate(Number(populationInput.value)||80);
-  // start animation loop (but not running unless user presses start)
   requestAnimationFrame(step);
 })();
 </script></body>
