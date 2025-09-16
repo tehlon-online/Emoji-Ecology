@@ -40,15 +40,20 @@
           <label>Speed: <input id="speedRange" type="range" min="0" max="3" step="0.01" value="1"></label>
         </div>
         <div class="panel">
-          <label>Rock 🪨 <input id="rockPct" type="number" min="0" max="100" value="33" style="width:60px">%</label>
-          <label>Paper 📄 <input id="paperPct" type="number" min="0" max="100" value="33" style="width:60px">%</label>
-          <label>Scissor ✂️ <input id="scissorPct" type="number" min="0" max="100" value="34" style="width:60px">%</label>
+          <label>Rock <input id="rockEmoji" type="text" value="🪨" style="width:50px"></label>
+          <label>Paper <input id="paperEmoji" type="text" value="📄" style="width:50px"></label>
+          <label>Scissor <input id="scissorEmoji" type="text" value="✂️" style="width:50px"></label>
+        </div>
+        <div class="panel">
+          <label>Rock % <input id="rockPct" type="number" min="0" max="100" value="33" style="width:60px"></label>
+          <label>Paper % <input id="paperPct" type="number" min="0" max="100" value="33" style="width:60px"></label>
+          <label>Scissor % <input id="scissorPct" type="number" min="0" max="100" value="34" style="width:60px"></label>
         </div>
       </div>
       <div class="stats">
-        <div class="stat">🪨 <span id="countRock">0</span></div>
-        <div class="stat">📄 <span id="countPaper">0</span></div>
-        <div class="stat">✂️ <span id="countScissor">0</span></div>
+        <div class="stat"><span id="rockStat">🪨</span> <span id="countRock">0</span></div>
+        <div class="stat"><span id="paperStat">📄</span> <span id="countPaper">0</span></div>
+        <div class="stat"><span id="scissorStat">✂️</span> <span id="countScissor">0</span></div>
       </div>
     </header><main>
   <canvas id="canvas"></canvas>
@@ -62,11 +67,12 @@
   </div><script>
 (() => {
   // --- Configuration ---
-  const EMOJIS = {
-    rock: '🪨',
-    paper: '📄',
-    scissor: '✂️'
+  let EMOJIS = {
+    rock: document.getElementById('rockEmoji').value,
+    paper: document.getElementById('paperEmoji').value,
+    scissor: document.getElementById('scissorEmoji').value
   };
+
   const TYPES = ['rock','paper','scissor'];
   const WINS = { rock: 'scissor', paper: 'rock', scissor: 'paper' };
 
@@ -97,9 +103,15 @@
   const rockPct = document.getElementById('rockPct');
   const paperPct = document.getElementById('paperPct');
   const scissorPct = document.getElementById('scissorPct');
+  const rockEmojiInput = document.getElementById('rockEmoji');
+  const paperEmojiInput = document.getElementById('paperEmoji');
+  const scissorEmojiInput = document.getElementById('scissorEmoji');
   const countRock = document.getElementById('countRock');
   const countPaper = document.getElementById('countPaper');
   const countScissor = document.getElementById('countScissor');
+  const rockStat = document.getElementById('rockStat');
+  const paperStat = document.getElementById('paperStat');
+  const scissorStat = document.getElementById('scissorStat');
 
   // --- State ---
   let running = false;
@@ -128,15 +140,14 @@
       const speed = rand(0.25,1.2);
       this.vx = Math.cos(angle)*speed;
       this.vy = Math.sin(angle)*speed;
-      this.size = 28; // larger emoji size
-      this.r = 18;    // larger collision radius
+      this.size = 28;
+      this.r = 18;
       this.id = Math.random().toString(36).slice(2,9);
     }
 
     update(dt){
       this.x += this.vx * dt * speedMultiplier;
       this.y += this.vy * dt * speedMultiplier;
-      // wrap around
       if(this.x < -20) this.x = cw+20;
       if(this.x > cw+20) this.x = -20;
       if(this.y < -20) this.y = ch+20;
@@ -149,6 +160,15 @@
       ctx.textBaseline = 'middle';
       ctx.shadowColor = 'rgba(0,0,0,0.7)';
       ctx.shadowBlur = 4;
+
+      if(this.type === 'scissor'){
+        ctx.fillStyle = 'red';
+      } else if(this.type === 'rock'){
+        ctx.fillStyle = 'saddlebrown';
+      } else {
+        ctx.fillStyle = 'white';
+      }
+
       ctx.fillText(EMOJIS[this.type], this.x, this.y);
       ctx.restore();
     }
@@ -231,11 +251,6 @@
   pauseBtn.addEventListener('click', ()=>{ pause(); });
   resetBtn.addEventListener('click', ()=>{ reset(); });
   speedRange.addEventListener('input', ()=>{ speedMultiplier = parseFloat(speedRange.value); });
-  populationInput.addEventListener('change', ()=>{ const v = Number(populationInput.value); if(v<3) populationInput.value=3; if(v>1000) populationInput.value=1000; });
-
-  rockPct.addEventListener('change', ()=>{ normalizePercents(); });
-  paperPct.addEventListener('change', ()=>{ normalizePercents(); });
-  scissorPct.addEventListener('change', ()=>{ normalizePercents(); });
 
   function normalizePercents(){
     let r = Number(rockPct.value)||0; let p = Number(paperPct.value)||0; let s = Number(scissorPct.value)||0;
@@ -244,8 +259,26 @@
     else { r = Math.round((r/total)*100); p = Math.round((p/total)*100); s = 100 - r - p }
     rockPct.value = r; paperPct.value = p; scissorPct.value = s;
   }
+  rockPct.addEventListener('change', normalizePercents);
+  paperPct.addEventListener('change', normalizePercents);
+  scissorPct.addEventListener('change', normalizePercents);
 
-  // spawn on click
+  rockEmojiInput.addEventListener('input', ()=>{
+    EMOJIS.rock = rockEmojiInput.value || '🪨';
+    rockStat.textContent = EMOJIS.rock;
+    reset();
+  });
+  paperEmojiInput.addEventListener('input', ()=>{
+    EMOJIS.paper = paperEmojiInput.value || '📄';
+    paperStat.textContent = EMOJIS.paper;
+    reset();
+  });
+  scissorEmojiInput.addEventListener('input', ()=>{
+    EMOJIS.scissor = scissorEmojiInput.value || '✂️';
+    scissorStat.textContent = EMOJIS.scissor;
+    reset();
+  });
+
   canvas.addEventListener('click', (e)=>{
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left; const y = e.clientY - rect.top;
@@ -253,16 +286,12 @@
     updateCounts();
   });
 
-  // double click to reset with current population
   canvas.addEventListener('dblclick', ()=>{ reset(); });
 
-  // keyboard space to pause
   window.addEventListener('keydown', (e)=>{ if(e.code === 'Space'){ e.preventDefault(); running = !running; startBtn.disabled = running; pauseBtn.disabled = !running } });
 
-  // periodically update counts
   setInterval(updateCounts, 500);
 
-  // initialize
   populate(Number(populationInput.value)||80);
   requestAnimationFrame(step);
 })();
