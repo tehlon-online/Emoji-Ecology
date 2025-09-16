@@ -1,0 +1,276 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RPS Emoji Ecosystem — Prototype</title>
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--text:#e6eef8}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    body{background:linear-gradient(180deg,#071021 0%, #0f1724 100%);color:var(--text);display:flex;align-items:center;justify-content:center}
+    .app{width:900px;max-width:95%;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+    h1{font-size:18px;margin:0}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .panel{background:var(--panel);padding:10px;border-radius:10px;display:flex;gap:8px;align-items:center}
+    .panel input[type=range]{width:140px}
+    button{background:#1e293b;border:0;padding:8px 10px;border-radius:8px;color:var(--text);cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+    .stats{margin-left:auto;display:flex;gap:8px;align-items:center}
+    .stat{font-size:13px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+    canvas{background:linear-gradient(180deg, #071428, #032033);display:block;border-radius:8px;width:100%;height:520px}
+    .footer{display:flex;justify-content:space-between;margin-top:8px;align-items:center;font-size:13px}
+    .small{font-size:12px;color:#9fb0c7}
+    a{color:#7dd3fc}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>RPS Emoji Ecosystem — Prototype</h1>
+      <div class="controls">
+        <div class="panel">
+          <button id="startBtn">Start</button>
+          <button id="pauseBtn" class="secondary">Pause</button>
+          <button id="resetBtn" class="secondary">Reset</button>
+        </div>
+        <div class="panel">
+          <label>Population: <input id="populationInput" type="number" min="3" max="1000" value="80" style="width:70px"></label>
+          <label>Speed: <input id="speedRange" type="range" min="0" max="3" step="0.01" value="1"></label>
+        </div>
+        <div class="panel">
+          <label>Rock 🪨 <input id="rockPct" type="number" min="0" max="100" value="33" style="width:60px">%</label>
+          <label>Paper 📄 <input id="paperPct" type="number" min="0" max="100" value="33" style="width:60px">%</label>
+          <label>Scissor ✂️ <input id="scissorPct" type="number" min="0" max="100" value="34" style="width:60px">%</label>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat">🪨 <span id="countRock">0</span></div>
+        <div class="stat">📄 <span id="countPaper">0</span></div>
+        <div class="stat">✂️ <span id="countScissor">0</span></div>
+      </div>
+    </header><main>
+  <canvas id="canvas" width="820" height="520"></canvas>
+</main>
+
+<div class="footer">
+  <div class="small">Rules: when two different symbols collide, the losing symbol converts into the winner. Same-type pass through each other (no interaction). Click the canvas to spawn one at the pointer.</div>
+  <div class="small">Tip: Press <kbd>Space</kbd> to pause / resume. Double-click to clear and spawn fresh population.</div>
+</div>
+
+  </div><script>
+(() => {
+  // --- Configuration ---
+  const EMOJIS = {
+    rock: '🪨',
+    paper: '📄',
+    scissor: '✂️'
+  };
+  const TYPES = ['rock','paper','scissor'];
+  const WINS = { rock: 'scissor', paper: 'rock', scissor: 'paper' };
+
+  // --- Canvas setup ---
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let cw = canvas.width = canvas.clientWidth;
+  let ch = canvas.height = canvas.clientHeight;
+
+  // --- UI elements ---
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const populationInput = document.getElementById('populationInput');
+  const speedRange = document.getElementById('speedRange');
+  const rockPct = document.getElementById('rockPct');
+  const paperPct = document.getElementById('paperPct');
+  const scissorPct = document.getElementById('scissorPct');
+  const countRock = document.getElementById('countRock');
+  const countPaper = document.getElementById('countPaper');
+  const countScissor = document.getElementById('countScissor');
+
+  // --- State ---
+  let running = false;
+  let entities = [];
+  let speedMultiplier = parseFloat(speedRange.value);
+  let lastTime = 0;
+
+  // --- Helpers ---
+  function rand(min,max){return Math.random()*(max-min)+min}
+  function pickTypeFromPercents(){
+    const r = Math.random()*100;
+    const rPct = Number(rockPct.value);
+    const pPct = Number(paperPct.value);
+    const sPct = Number(scissorPct.value);
+    if(r <= rPct) return 'rock';
+    if(r <= rPct + pPct) return 'paper';
+    return 'scissor';
+  }
+
+  // --- Entity ---
+  class Entity{
+    constructor(x,y,type){
+      this.x = x; this.y = y;
+      this.type = type || pickTypeFromPercents();
+      const angle = Math.random()*Math.PI*2;
+      const speed = rand(0.25,1.2);
+      this.vx = Math.cos(angle)*speed;
+      this.vy = Math.sin(angle)*speed;
+      this.size = 22; // emoji draw size
+      this.r = 12; // collision radius
+      this.id = Math.random().toString(36).slice(2,9);
+    }
+
+    update(dt){
+      this.x += this.vx * dt * speedMultiplier;
+      this.y += this.vy * dt * speedMultiplier;
+      // wrap around
+      if(this.x < -20) this.x = cw+20;
+      if(this.x > cw+20) this.x = -20;
+      if(this.y < -20) this.y = ch+20;
+      if(this.y > ch+20) this.y = -20;
+    }
+    draw(ctx){
+      ctx.save();
+      ctx.font = `${this.size}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(EMOJIS[this.type], this.x, this.y+2);
+      ctx.restore();
+    }
+  }
+
+  // --- collision detection and interaction ---
+  function handleCollisions(){
+    const n = entities.length;
+    // naive O(n^2) — okay for a few hundred
+    for(let i=0;i<n;i++){
+      const a = entities[i];
+      for(let j=i+1;j<n;j++){
+        const b = entities[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const dist2 = dx*dx + dy*dy;
+        const minDist = a.r + b.r;
+        if(dist2 <= minDist*minDist){
+          // collision detected
+          if(a.type === b.type){
+            // same type → pass through (do nothing)
+            continue;
+          }
+          // determine winner (if a wins over b, b converts to a.type)
+          if(WINS[a.type] === b.type){
+            // a beats b -> b converts
+            b.type = a.type;
+            // optionally nudge velocity of converted to match winner a a bit
+            b.vx = (b.vx + a.vx)*0.6; b.vy = (b.vy + a.vy)*0.6;
+          } else if(WINS[b.type] === a.type){
+            // b beats a -> a converts
+            a.type = b.type;
+            a.vx = (a.vx + b.vx)*0.6; a.vy = (a.vy + b.vy)*0.6;
+          }
+          // Note: no bounce -- they continue moving (pass-through style) after possible conversion
+        }
+      }
+    }
+  }
+
+  // --- Simulation ---
+  function step(timestamp){
+    if(!lastTime) lastTime = timestamp;
+    const dt = Math.min(32, timestamp - lastTime) / 16.666; // ~60fps normalization
+    lastTime = timestamp;
+
+    if(running){
+      // update
+      for(const e of entities) e.update(dt);
+      handleCollisions();
+    }
+    render();
+    requestAnimationFrame(step);
+  }
+
+  function render(){
+    ctx.clearRect(0,0,cw,ch);
+    // background grid subtle
+    ctx.save();
+    // draw entities
+    for(const e of entities) e.draw(ctx);
+    ctx.restore();
+  }
+
+  // --- Controls ---
+  function start(){ if(!running){ running = true; startBtn.disabled=true; pauseBtn.disabled=false }}
+  function pause(){ if(running){ running=false; startBtn.disabled=false; pauseBtn.disabled=true }}
+  function reset(){
+    entities = [];
+    populate(Number(populationInput.value)||80);
+    startBtn.disabled=false; pauseBtn.disabled=false;
+    updateCounts();
+  }
+
+  function populate(n){
+    entities = [];
+    for(let i=0;i<n;i++){
+      entities.push(new Entity(rand(10,cw-10), rand(10,ch-10)));
+    }
+    updateCounts();
+  }
+
+  function updateCounts(){
+    const counts = { rock:0, paper:0, scissor:0 };
+    for(const e of entities) counts[e.type]++;
+    countRock.textContent = counts.rock;
+    countPaper.textContent = counts.paper;
+    countScissor.textContent = counts.scissor;
+  }
+
+  // UI bindings
+  startBtn.addEventListener('click', ()=>{ start(); });
+  pauseBtn.addEventListener('click', ()=>{ pause(); });
+  resetBtn.addEventListener('click', ()=>{ reset(); });
+  speedRange.addEventListener('input', ()=>{ speedMultiplier = parseFloat(speedRange.value); });
+  populationInput.addEventListener('change', ()=>{ const v = Number(populationInput.value); if(v<3) populationInput.value=3; if(v>1000) populationInput.value=1000; });
+
+  rockPct.addEventListener('change', ()=>{ normalizePercents(); });
+  paperPct.addEventListener('change', ()=>{ normalizePercents(); });
+  scissorPct.addEventListener('change', ()=>{ normalizePercents(); });
+
+  function normalizePercents(){
+    let r = Number(rockPct.value)||0; let p = Number(paperPct.value)||0; let s = Number(scissorPct.value)||0;
+    const total = r + p + s;
+    if(total === 0){ r=33;p=33;s=34 }
+    else { r = Math.round((r/total)*100); p = Math.round((p/total)*100); s = 100 - r - p }
+    rockPct.value = r; paperPct.value = p; scissorPct.value = s;
+  }
+
+  // spawn on click
+  canvas.addEventListener('click', (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left; const y = e.clientY - rect.top;
+    entities.push(new Entity(x,y));
+    updateCounts();
+  });
+
+  // double click to reset with current population
+  canvas.addEventListener('dblclick', ()=>{ reset(); });
+
+  // keyboard space to pause
+  window.addEventListener('keydown', (e)=>{ if(e.code === 'Space'){ e.preventDefault(); running = !running; startBtn.disabled = running; pauseBtn.disabled = !running } });
+
+  // periodically update counts
+  setInterval(updateCounts, 500);
+
+  // responsive resize
+  window.addEventListener('resize', ()=>{
+    cw = canvas.width = canvas.clientWidth;
+    ch = canvas.height = canvas.clientHeight;
+  });
+
+  // initialize
+  populate(Number(populationInput.value)||80);
+  // start animation loop (but not running unless user presses start)
+  requestAnimationFrame(step);
+})();
+</script></body>
+</html>
